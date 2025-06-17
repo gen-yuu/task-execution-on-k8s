@@ -1,0 +1,21 @@
+# python3.11.9, CUDA Toolkit: 12.4, 
+# PyTorch用の追加インデックスを指定
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+torch==2.4.1
+torchvision==0.19.1
+
+# 実行時間計測スクリプトで必要なライブラリ
+pandas==2.2.2
+boto3==1.34.138
+psutil==5.9.8
+py-cpuinfo==9.0.0
+nvidia-ml-py==12.550.52
+distro==1.9.0
+
+
+# 開発環境で必要なライブラリ
+isort 
+black
+flake8
+pyproject-flake8

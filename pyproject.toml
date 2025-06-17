@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpu_runtime_modeler"
+version = "0.1.0"
+authors = [
+  { name="gen-yuu", email="u763759d@ecs.osaka-u.ac.jp" },
+]
+description = "A project to model GPU task execution time."
+# readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]  # ソースコードがsrcディレクトリにあることを指定
+
+[tool.isort]
+profile="black"
+
+[tool.black]
+line-length = 88
+
