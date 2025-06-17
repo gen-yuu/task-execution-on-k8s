@@ -12,6 +12,7 @@ psutil==5.9.8
 py-cpuinfo==9.0.0
 nvidia-ml-py==12.550.52
 distro==1.9.0
+ultralytics==8.3.155
 
 
 # 開発環境で必要なライブラリ

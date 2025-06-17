@@ -1,4 +1,3 @@
-# --- 情報取得のための追加インポート ---
 import cpuinfo
 import distro
 import psutil
@@ -13,8 +12,9 @@ import traceback
 
 import torch
 import torchvision
+from ultralytics import YOLO
 
-from .logger import setup_logger
+from common.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -83,3 +83,45 @@ def get_system_info(device: torch.device) -> dict:
 
     logger.info("System Information collected.", extra={"system_info": info})
     return info
+
+
+def create_model(model_name: str, device: torch.device) -> tuple:
+    """
+    モデル名に基づいて、事前学習済みのモデルと対応するtransformを返すファクトリー関数
+
+    Args:
+        model_name (str): モデル名
+        device (torch.device): 使用するデバイス
+
+    Returns:
+        tuple: モデルと対応するtransform
+    """
+    logger.info(f"Creating model: {model_name}")
+    transform = None  # デフォルトはNone
+
+    if model_name == "faster_rcnn":
+        weights = (
+            torchvision.models.detection.FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+        )
+        model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights=weights)
+        transform = weights.transforms()
+    elif model_name == "ssd300_vgg16":
+        weights = torchvision.models.detection.SSD300_VGG16_Weights.DEFAULT
+        model = torchvision.models.detection.ssd300_vgg16(weights=weights)
+        transform = weights.transforms()
+    elif model_name == "yolov8s":
+        model = YOLO("yolov8s.pt")  # .ptファイルをダウンロード・ロード
+        # YOLOv8の場合、transformは推論時に自動で適用されるため不要
+    else:
+        logger.error(f"Unknown model name provided: {model_name}")
+        raise ValueError(f"Unknown model name: {model_name}")
+
+    # YOLOv8のモデルオブジェクトは to(device) メソッドを持つ
+    model.to(device)
+
+    # eval()モードに設定 (YOLOクラスは内部で適切に処理)
+    if hasattr(model, "eval"):
+        model.eval()
+
+    logger.info(f"Model '{model_name}' created and moved to {device}.")
+    return model, transform

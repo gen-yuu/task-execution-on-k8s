@@ -1,5 +1,3 @@
-from typing import List
-
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
@@ -43,7 +41,7 @@ class S3Client:
             )
             raise
 
-    def list_objects(self, bucket_name: str, prefix: str = "") -> List[str]:
+    def list_objects(self, bucket_name: str, prefix: str = "") -> list[str]:
         """
         指定されたバケット内のオブジェクトを一覧取得する
 
