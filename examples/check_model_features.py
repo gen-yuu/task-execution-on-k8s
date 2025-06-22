@@ -1,12 +1,10 @@
-# examples/check_model_features.py
-
 import logging
 
 import torch
 
-from src.common.logger import setup_logger
-from src.run_single_task.feature_extractor import ModelFeatureExtractor
-from src.run_single_task.utils import create_model
+from common.logger import setup_logger
+from run_single_task.feature_extractor import ModelFeatureExtractor
+from run_single_task.utils import create_model
 
 # ロガーをセットアップ
 setup_logger(__name__)

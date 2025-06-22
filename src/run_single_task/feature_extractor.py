@@ -22,7 +22,8 @@ class ModelFeatureExtractor:
             model (nn.Module): モデル
             input_resolution (tuple[int, int, int]): 入力画像の解像度
         """
-        self.model = model
+        # YOLOv8のようなラッパーオブジェクトの場合、実際のnn.Moduleは.model属性にある
+        self.nn_model = model.model if hasattr(model, "model") else model
         # (チャンネル数, 高さ, 幅) の形式
         self.input_resolution = input_resolution
         self.device = next(model.parameters()).device
@@ -42,7 +43,7 @@ class ModelFeatureExtractor:
             graph_module = torch.fx.symbolic_trace(self.model)  # type: ignore
             for node in graph_module.graph.nodes:
                 if node.op == "call_module":
-                    module = dict(self.model.named_modules())[node.target]
+                    module = dict(self.nn_model.named_modules())[node.target]
                     if isinstance(module, nn.Conv2d):
                         features["num_conv2d"] += 1
                     elif isinstance(module, nn.Linear):
@@ -60,7 +61,9 @@ class ModelFeatureExtractor:
         dummy_input = torch.randn(1, *self.input_resolution).to(self.device)
         try:
             # モデルによってはカスタムOpの登録が必要な場合がある
-            profile_result = profile(self.model, inputs=(dummy_input,), verbose=False)
+            profile_result = profile(
+                self.nn_model, inputs=(dummy_input,), verbose=False
+            )
             flops = profile_result[0]
             params = profile_result[1]
             return {"model_flops_g": flops / 1e9, "model_params_m": params / 1e6}
@@ -78,7 +81,8 @@ class ModelFeatureExtractor:
         model_features = {}
 
         # レイヤー数の解析
-        layer_counts = self._analyze_with_fx()
+        # layer_counts = self._analyze_with_fx()
+        layer_counts = self._analyze_with_export()
         model_features.update(layer_counts)
 
         # FLOPsとパラメータ数の計算
@@ -87,12 +91,12 @@ class ModelFeatureExtractor:
 
         # メモリサイズとデータ型の取得
         total_memory_bytes = sum(
-            p.numel() * p.element_size() for p in self.model.parameters()
+            p.numel() * p.element_size() for p in self.nn_model.parameters()
         )
         model_features["model_memory_mb"] = total_memory_bytes / (1024**2)
 
         # 最初のパラメータのデータ型を代表として使う
-        input_dtype = next(self.model.parameters()).dtype
+        input_dtype = next(self.nn_model.parameters()).dtype
         model_features["model_input_dtype_bytes"] = (
             torch.finfo(input_dtype).bits // 8 if input_dtype.is_floating_point else 1
         )
