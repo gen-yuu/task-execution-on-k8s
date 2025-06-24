@@ -1,0 +1,26 @@
+services:
+  task-runner-test:
+    build: .
+    image: task-runner-test
+    container_name: task-runner-test
+    #実行するコマンドを定義 (main.pyのテストモードを呼び出す)
+    command: >
+      python main.py --test-mode
+        --task-index 2
+        --s3-bucket "test-bucket"
+        --s3-endpoint-url "192.168.0.50:9000"
+        --s3-access-key "minioadmin"
+        --s3-secret-key "Ashushu0810@"
+    # GPUを利用するための設定
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    network_mode: "host"
+    # ローカルのlogsディレクトリをコンテナの/app/logsにマウント
+    # これにより、コンテナ内で生成されたログファイルがホストPCに残る
+    # volumes:
+    #   - ./logs:/app/logs

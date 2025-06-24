@@ -1,6 +1,6 @@
 import torch
 
-from run_single_task.utils import get_system_info
+from common.utils import get_system_info
 
 if __name__ == "__main__":
 

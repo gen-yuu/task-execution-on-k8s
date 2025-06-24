@@ -1,0 +1,5 @@
+resources:
+  - job.yaml
+configMapGenerator: [] # 他リソースが無い場合おまじない的に空
+generatorOptions:
+  disableNameSuffixHash: true

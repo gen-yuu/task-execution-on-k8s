@@ -1,31 +1,34 @@
-# 1. ベースイメージの選定
-# NVIDIA公式のCUDA + cuDNN入りUbuntu22.04イメージを使用。これが最も確実。
-FROM nvidia/cuda:12.4.1-cudnn9-devel-ubuntu22.04
+# PyTorch 2.4.1 と互換性のあるCUDAバージョンを持つ公式イメージを指定
+FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
 
-# 環境変数を設定（Pythonのバッファリング無効化など）
-ENV PYTHONUNBUFFERED 1
-
-# 2. 必要なツールとPythonをインストール
-RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3-pip \
-    python3.11-venv \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# python3 -> python3.11へのシンボリックリンクを作成
-RUN ln -sf /usr/bin/python3.11 /usr/bin/python3
-
-# 3. requirements.txtをコピーしてライブラリをインストール
+# イメージ内に作成する作業ディレクトリを設定
 WORKDIR /app
+
+ENV TZ=Asia/Tokyo
+
+RUN apt-get update && apt-get install -y tzdata && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+    
+RUN apt-get update && apt-get install -y  --no-install-recommends libgl1-mesa-glx libglib2.0-0 curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# --- 依存関係のインストール ---
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# pipをアップグレードし、requirements.txtの内容をインストール
-RUN python3 -m pip install --no-cache-dir --upgrade pip
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
+# --- ソースコードのコピー ---
+# 実行に必要なソースコードと設定ファイルのみをコピーします。
+COPY ./src ./src
+COPY main.py .
+COPY combine_results.py .
+COPY pyproject.toml .
 
-# 4. ソースコードをコピー
-COPY . .
+RUN pip install --no-cache-dir -e .
 
-# このDockerfileを実行したときにデフォルトで実行されるコマンド (オプション)
-# CMD ["python3", "run_single_task.py"]
+# --- デフォルトの実行コマンド ---
+# このイメージを使ってコンテナを起動した際に、デフォルトで実行されるコマンドです。
+# KubernetesのJob定義で上書きされることが多いですが、適切なデフォルトを設定しておくと便利です。
+#CMD ["python", "main.py"]

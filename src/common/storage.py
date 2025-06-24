@@ -2,8 +2,8 @@ import logging
 
 import pandas as pd
 
-from common.error import StorageError
 from library.aws.client import S3Client
+from library.aws.error import StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -13,16 +13,25 @@ class TaskStorage:
     S3Clientを利用して、このアプリケーション固有のストレージ操作を行うクラス
     """
 
-    def __init__(self, s3_client: S3Client, data_bucket: str, result_bucket: str):
+    def __init__(
+        self,
+        endpoint_url: str,
+        access_key: str,
+        secret_key: str,
+        data_bucket: str,
+        result_bucket: str,
+    ):
         """
         TaskStorageを初期化する
 
         Args:
-            s3_client (S3Client): 通信に使用するS3クライアントのインスタンス。
-            data_bucket (str): 入力データが格納されているバケット名。
-            result_bucket (str): 結果を保存するバケット名。
+            endpoint_url (str): S3エンドポイントURL
+            access_key (str): S3アクセスキー
+            secret_key (str): S3シークレットキー
+            data_bucket (str): 入力データが格納されているバケット名
+            result_bucket (str): 結果を保存するバケット名
         """
-        self.client = s3_client
+        self.client = S3Client(endpoint_url, access_key, secret_key)
         self.data_bucket = data_bucket
         self.result_bucket = result_bucket
         logger.info(
@@ -94,7 +103,7 @@ class TaskStorage:
         try:
             self.client.put_object(
                 bucket_name=self.result_bucket,
-                object_name=object_name,
+                object_key=object_name,
                 data=csv_bytes,
                 content_type="text/csv",
             )

@@ -1,0 +1,91 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: task-runner-job
+spec:
+  completionMode: Indexed
+  completions: 3000 # このJobで完了させるPodの総数 (インデックスは 0 から 29 まで) ->　タスク総数
+  parallelism: 1 # 同時に実行するPodの最大数
+  backoffLimitPerIndex: 1 # インデックスごとにPODを2回まで作り直す
+  ttlSecondsAfterFinished: 10 # 終了後 10 秒でガベージGC
+
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: task-runner-container
+          image: genyuuu/task-runner-pytorch:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # ---------- 実タスク ----------
+              python main.py
+
+              # ---------- 終了ステータス ----------
+              status=$?
+
+              # ---------- 条件付き Slack 通知 ----------
+              TOTAL=$TOTAL_COMPLETIONS
+              STEP=$(( (TOTAL + 9) / 10 ))  # 10%刻み
+
+              idx=$(( JOB_COMPLETION_INDEX + 1 ))
+
+              if (( idx % STEP == 0 || idx == TOTAL )); then
+                percent=$(( (idx * 100 + TOTAL/2) / TOTAL ))   # 四捨五入
+
+                if (( percent == 100 )); then
+                  # ===== 100 %: 完了メッセージ =====
+                  msg="${NODE_NAME}: 🎉 *${JOB_NAME}* 完了 (${idx}/${TOTAL})"
+                else
+                  # ===== 通常 10 % ごとのメッセージ =====
+                  msg="${NODE_NAME}: ✅ ${JOB_NAME}: ${percent}% 進行中 (${idx}/${TOTAL})"
+                fi
+
+                curl -s -X POST -H 'Content-Type: application/json' \
+                    --data "{\"text\":\"${msg}\"}" \
+                    "$SLACK_WEBHOOK_URL"
+              fi
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          env:
+            - name: TZ
+              value: "Asia/Tokyo"
+            - name: S3_BUCKET
+              value: "gpu-perf-predictor"
+            - name: S3_ENDPOINT_URL
+              value: "192.168.0.50:9000"
+            - name: S3_ACCESS_KEY
+              value: "minioadmin"
+            - name: S3_SECRET_KEY
+              value: "Ashushu0810@"
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+            - name: JOB_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['job-name']
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook-secret
+                  key: url
+            - name: TOTAL_COMPLETIONS
+              value: "3000" # タスク総数
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - PLACEHOLDER # ターゲットのノード名を入れる

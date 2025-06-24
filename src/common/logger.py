@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+from typing import Optional
 
 
 class JsonFormatter(logging.Formatter):
@@ -41,8 +42,8 @@ class JsonFormatter(logging.Formatter):
         log_object = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
-            "message": record.getMessage(),
             "logger_name": record.name,
+            "message": record.getMessage(),
         }
 
         # Add any fields passed in the 'extra' parameter
@@ -53,20 +54,45 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_object, ensure_ascii=False)
 
 
-def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+def setup_logger(
+    level: int = logging.INFO,
+    logfile_path: Optional[str] = None,
+):
     """
     Sets up a logger with a JSON formatter.
+
+    Args:
+        name (str): The name of the logger.
+        level (int, optional): The logging level. Defaults to logging.INFO.
+        logfile_path (str, optional): The path to the log file. If None,
+          no file handler will be added.
     """
-    logger = logging.getLogger(name)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
 
     # Prevents adding handlers multiple times in interactive environments
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
 
-    logger.setLevel(level)
-    handler = logging.StreamHandler(sys.stdout)
     formatter = JsonFormatter()
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
 
-    return logger
+    # ターミナル出力用のハンドラ
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(level)
+    root_logger.addHandler(stream_handler)
+
+    if logfile_path:
+        # ログディレクトリが存在しない場合は作成
+        import os
+
+        log_dir = os.path.dirname(logfile_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+
+        file_handler = logging.FileHandler(logfile_path, mode="a", encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(level)
+        root_logger.addHandler(file_handler)
+
+        logging.info("Logging is also directed to the file: %s", logfile_path)

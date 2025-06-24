@@ -2,16 +2,18 @@ import logging
 
 import torch
 
-from common.logger import setup_logger
+from common.utils import load_model
 from run_single_task.feature_extractor import ModelFeatureExtractor
-from run_single_task.utils import create_model
 
 # ロガーをセットアップ
-setup_logger(__name__)
+
 logger = logging.getLogger(__name__)
 
 
 def check_features():
+    """
+    モデルの特徴量をチェックする
+    """
     # テストしたいモデルのリスト
     model_names = ["faster_rcnn", "ssd300_vgg16", "yolov8s"]
 
@@ -24,21 +26,20 @@ def check_features():
     dummy_resolution = (3, 640, 640)
 
     for name in model_names:
-        print("-" * 50)
         logger.info(f"Analyzing model: {name}")
         try:
-            # 1. モデルを生成
-            model, _ = create_model(name, device)
+            # モデルを生成
+            model, transform = load_model(name)
 
-            # 2. 特徴量抽出器を初期化
-            extractor = ModelFeatureExtractor(model, dummy_resolution)
+            # 特徴量抽出器を初期化
+            extractor = ModelFeatureExtractor(model, dummy_resolution, device)
 
-            # 3. 特徴量を抽出して表示
+            # 特徴量を抽出して表示
             features = extractor.extract_features()
 
-            print(f"Features for {name}:")
+            logger.info(f"Features for {name}:")
             for key, value in features.items():
-                print(f"  {key}: {value}")
+                logger.info(f"  {key}: {value}")
 
         except Exception as e:
             logger.error(
@@ -46,9 +47,9 @@ def check_features():
                 extra={
                     "error": str(e),
                 },
+                exc_info=True,
             )
 
 
 if __name__ == "__main__":
-    # プロジェクトをインストール済み(`pip install -e .`)であることが前提
     check_features()
