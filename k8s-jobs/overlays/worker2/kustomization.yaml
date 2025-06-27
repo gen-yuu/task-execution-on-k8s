@@ -1,7 +1,0 @@
-resources:
-  - ../../base
-
-patchesStrategicMerge:
-  - node-patch.yaml
-
-nameSuffix: -k8s-worker2

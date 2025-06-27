@@ -27,6 +27,30 @@ COLOR_SPACE_TO_CHANNELS = {
 MILLISECONDS_PER_SECOND = 1000
 
 
+def load_frames_iteratively(s3_client, bucket_name, frame_keys, logger):
+    """
+    フレームを1つずつロードしてyieldするジェネレータ関数
+
+    Args:
+        s3_client (S3Client): S3クライアントオブジェクト
+        bucket_name (str): バケット名
+        frame_keys (list): フレームキーのリスト
+        logger (logging.Logger): ロガー
+
+    Yields:
+        PIL.Image.Image: ロードした画像
+    """
+    for key in frame_keys:
+        try:
+            pil_image = s3_client.get_image(
+                bucket_name=bucket_name,
+                object_key=key,
+            )
+            yield pil_image
+        except (ObjectNotFoundError, ImageDecodeError) as e:
+            logger.warning("Skipping frame '%s' due to an error: %s", key, e)
+
+
 def main(config):
     logger.info("Starting main function")
     # タスク情報と環境変数の取得
@@ -196,8 +220,7 @@ def main(config):
         raise
 
     logger.info("Proceeding to inference phase.")
-    # 全フレームをS3から事前にメモリへダウンロード
-    frames_in_memory = []
+
     frame_prefix = f"{video_path}/frames/"
 
     frame_keys = s3_client.list_object_keys(
@@ -208,29 +231,18 @@ def main(config):
 
     logger.info(f"Found {len(frame_keys)} frames in '{frame_prefix}'.")
 
-    for key in frame_keys:
-        try:
-            # PIL Imageオブジェクトを取得
-            pil_image = s3_client.get_image(
-                bucket_name=s3_bucket,
-                object_key=key,
-            )
-            frames_in_memory.append(pil_image)
-        except (ObjectNotFoundError, ImageDecodeError) as e:
-            logger.warning("Skipping frame '%s' due to an error: %s", key, e)
-    original_seq_length = video_info.get("seqLength", len(frame_keys))
-    processed_seq_length = len(frames_in_memory)
+    frame_generator = load_frames_iteratively(s3_client, s3_bucket, frame_keys, logger)
 
-    # 実際に処理するフレーム数でseqLengthを更新
-    video_info["seqLength"] = processed_seq_length
-
-    # もしスキップしたフレームがあれば、警告ログを出す
-    if original_seq_length != processed_seq_length:
-        logger.warning(
-            f"Original seqLength was {original_seq_length},"
-            "but successfully loaded {processed_seq_length} frames.",
-        )
-    logger.info("%d frames loaded into memory.", len(frames_in_memory))
+    # for key in frame_keys:
+    #     try:
+    #         # PIL Imageオブジェクトを取得
+    #         pil_image = s3_client.get_image(
+    #             bucket_name=s3_bucket,
+    #             object_key=key,
+    #         )
+    #         frames_in_memory.append(pil_image)
+    #     except (ObjectNotFoundError, ImageDecodeError) as e:
+    #         logger.warning("Skipping frame '%s' due to an error: %s", key, e)
 
     # モデルのGPU転送と、その時間の計測
     logger.info(f"Transferring model to device: {str(device)}")
@@ -253,7 +265,7 @@ def main(config):
     gpu_compute_times_per_frame = []
     model.eval()
     try:
-        for i, pil_image in enumerate(frames_in_memory):
+        for i, pil_image in enumerate(frame_generator):
             torch.cuda.synchronize()
             wall_start_time = time.time()
 

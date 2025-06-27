@@ -1,0 +1,17 @@
+# このパッチは、Jobの配置場所を変更するためのもの
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: task-runner-job
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - k8s-worker6

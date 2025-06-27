@@ -4,51 +4,81 @@ metadata:
   name: task-runner-job
 spec:
   completionMode: Indexed
-  completions: 3000 # このJobで完了させるPodの総数 (インデックスは 0 から 29 まで) ->　タスク総数
-  parallelism: 1 # 同時に実行するPodの最大数
-  backoffLimitPerIndex: 1 # インデックスごとにPODを2回まで作り直す
-  ttlSecondsAfterFinished: 10 # 終了後 10 秒でガベージGC
+  completions: 3000 # このJobで完了させるPodの総数 (インデックスは0から2999まで)
+  parallelism: 1 # 同時に実行するPodの最大数(今回GPU1枚なのでこの設定)
+  backoffLimitPerIndex: 1 # インデックスごとにPODを2回までやり直す
+  ttlSecondsAfterFinished: 60 # 終了後1分で自動削除
 
   template:
     spec:
       restartPolicy: Never
       containers:
         - name: task-runner-container
-          image: genyuuu/task-runner-pytorch:latest
+          image: genyuuu/task-runner-pytorch:v1.1
           command:
             - /bin/bash
             - -c
             - |
+              # START_INDEXが未設定なら0を、設定されていればその値を使う
+              EFFECTIVE_START_INDEX=${START_INDEX:-0}
+              ACTUAL_INDEX=$(( EFFECTIVE_START_INDEX + JOB_COMPLETION_INDEX ))
+              echo "Executing: K8s Index=${JOB_COMPLETION_INDEX}, Start Index=${EFFECTIVE_START_INDEX}, Actual Task Index=${ACTUAL_INDEX}"
+
               # ---------- 実タスク ----------
-              python main.py
+              # pythonの終了ステータスを確実に取得するため、一時的にエラーで終了しないようにする
+              set +e
+              JOB_COMPLETION_INDEX=$ACTUAL_INDEX python main.py
 
-              # ---------- 終了ステータス ----------
+              # main.pyの終了ステータスを保持
               status=$?
+              set -e
+              echo "Task ${ACTUAL_INDEX} finished with status ${status}"
 
-              # ---------- 条件付き Slack 通知 ----------
-              TOTAL=$TOTAL_COMPLETIONS
-              STEP=$(( (TOTAL + 9) / 10 ))  # 10%刻み
-
-              idx=$(( JOB_COMPLETION_INDEX + 1 ))
-
-              if (( idx % STEP == 0 || idx == TOTAL )); then
-                percent=$(( (idx * 100 + TOTAL/2) / TOTAL ))   # 四捨五入
-
-                if (( percent == 100 )); then
-                  # ===== 100 %: 完了メッセージ =====
-                  msg="${NODE_NAME}: 🎉 *${JOB_NAME}* 完了 (${idx}/${TOTAL})"
-                else
-                  # ===== 通常 10 % ごとのメッセージ =====
-                  msg="${NODE_NAME}: ✅ ${JOB_NAME}: ${percent}% 進行中 (${idx}/${TOTAL})"
-                fi
-
+              # ---------- 実行結果に応じたSlack通知 ----------
+              if [ $status -ne 0 ]; then
+                # =====【失敗時の通知】=====
+                msg="*${NODE_NAME}*\n> Message: 🚨 Job失敗\n> JOB_NAME: \`${JOB_NAME}\`\n> Task Index: \`${ACTUAL_INDEX}\`\n> Exit Code: \`${status}\`"
+                echo "Sending failure notification to Slack..."
                 curl -s -X POST -H 'Content-Type: application/json' \
                     --data "{\"text\":\"${msg}\"}" \
                     "$SLACK_WEBHOOK_URL"
+              else
+                # =====【成功時の通知】=====
+                # 10%刻み、または最後のタスクが完了した場合に通知
+                ORIGINAL_TOTAL=${ORIGINAL_TOTAL_COMPLETIONS:-${TOTAL_COMPLETIONS}}
+                TOTAL=$ORIGINAL_TOTAL
+                STEP=$(( (TOTAL + 9) / 10 ))  # 10%刻み
+
+                idx=$(( ACTUAL_INDEX  + 1 ))
+
+                if (( idx % STEP == 0 || idx == TOTAL )); then
+                  percent=$(( (idx * 100 + TOTAL/2) / TOTAL ))   # 四捨五入
+
+                  if (( percent == 100 )); then
+                    # ===== 100 %: 完了メッセージ =====
+                    msg="*${NODE_NAME}*\n> Message: 🎉 Job完了\n> JOB_NAME: \`${JOB_NAME}\`\n> Progress: \`${percent}%\`\n> Completed Tasks: \`${idx}/${TOTAL}\`" 
+                  else
+                    # ===== 通常 10 % ごとのメッセージ =====
+                    msg="*${NODE_NAME}*\n> Message: ✅ Job進行中\n> JOB_NAME: \`${JOB_NAME}\`\n> Progress: \`${percent}%\`\n> Completed Tasks: \`${idx}/${TOTAL}\`" 
+                  fi
+                  echo "Sending progress notification to Slack..."
+                  curl -s -X POST -H 'Content-Type: application/json' \
+                      --data "{\"text\":\"${msg}\"}" \
+                      "$SLACK_WEBHOOK_URL"
+                fi
               fi
+
+              # main.py の終了ステータスでコンテナを終了させる
+              echo "Exiting with status ${status}"
+              exit $status
           resources:
+            requests:
+              memory: "8Gi"
+              cpu: "6"
             limits:
               nvidia.com/gpu: 1
+              memory: "10Gi"
+              cpu: "10"
           env:
             - name: TZ
               value: "Asia/Tokyo"
@@ -60,6 +90,13 @@ spec:
               value: "minioadmin"
             - name: S3_SECRET_KEY
               value: "Ashushu0810@"
+            - name: TOTAL_COMPLETIONS
+              value: "3000" # タスク総数
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook-secret
+                  key: url
             - name: JOB_COMPLETION_INDEX
               valueFrom:
                 fieldRef:
@@ -68,13 +105,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.labels['job-name']
-            - name: SLACK_WEBHOOK_URL
-              valueFrom:
-                secretKeyRef:
-                  name: slack-webhook-secret
-                  key: url
-            - name: TOTAL_COMPLETIONS
-              value: "3000" # タスク総数
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
@@ -88,4 +118,4 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
-                      - PLACEHOLDER # ターゲットのノード名を入れる
+                      - PLACEHOLDER # ターゲットのノード名が入る

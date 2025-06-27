@@ -1,0 +1,59 @@
+# このパッチに、再開のために必要な変更点をすべて記述します。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: task-runner-job
+spec:
+  # 実行すべき残りのタスク数に上書き
+  completions: 790
+  template:
+    spec:
+      containers:
+        - name: task-runner-container
+          # === Kustomizeの仕様上、envリストは丸ごと置き換えになるため、ベースにあるものを全て再記述する必要があります ===
+          env:
+            - name: TZ
+              value: "Asia/Tokyo"
+            - name: S3_BUCKET
+              value: "gpu-perf-predictor"
+            - name: S3_ENDPOINT_URL
+              value: "192.168.0.50:9000"
+            - name: S3_ACCESS_KEY
+              value: "minioadmin"
+            - name: S3_SECRET_KEY
+              value: "Ashushu0810@"
+            - name: TOTAL_COMPLETIONS # この値は使われないがベースにあるため記述
+              value: "3000" # タスク総数
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: slack-webhook-secret
+                  key: url
+            - name: JOB_COMPLETION_INDEX
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+            - name: JOB_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['job-name']
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            # === ここからが再開用の追加・上書き設定 ===
+            # 元の総タスク数を新しい変数で定義
+            - name: ORIGINAL_TOTAL_COMPLETIONS
+              value: "3000"
+            # 再開開始インデックスを定義
+            - name: START_INDEX
+              value: "2210"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - k8s-worker2

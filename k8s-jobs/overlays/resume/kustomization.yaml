@@ -1,0 +1,11 @@
+# 再開したいnodeを指定する
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./worker1
+  - ./worker2
+  - ./worker3
+  - ./worker4
+  - ./worker5
+  - ./worker6
+  - ./worker7

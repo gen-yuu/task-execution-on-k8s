@@ -1,10 +1,10 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: test-task-runner-job
+  name: task-runner-job
 spec:
   completionMode: Indexed
-  completions: 30 # このJobで完了させるPodの総数 (インデックスは 0 から 29 まで) ->　タスク総数
+  completions: 3000 # このJobで完了させるPodの総数 (インデックスは 0 から 29 まで) ->　タスク総数
   parallelism: 1 # 同時に実行するPodの最大数
   backoffLimitPerIndex: 1 # インデックスごとにPODを2回まで作り直す
   ttlSecondsAfterFinished: 10 # 終了後 10 秒でガベージGC
@@ -47,18 +47,13 @@ spec:
                     "$SLACK_WEBHOOK_URL"
               fi
           resources:
-            requests:
-              memory: "4Gi"
-              cpu: "2"
             limits:
               nvidia.com/gpu: 1
-              memory: "8Gi"
-              cpu: "8"
           env:
             - name: TZ
               value: "Asia/Tokyo"
             - name: S3_BUCKET
-              value: "test-bucket"
+              value: "gpu-perf-predictor"
             - name: S3_ENDPOINT_URL
               value: "192.168.0.50:9000"
             - name: S3_ACCESS_KEY
@@ -79,7 +74,7 @@ spec:
                   name: slack-webhook-secret
                   key: url
             - name: TOTAL_COMPLETIONS
-              value: "30" # タスク総数
+              value: "3000" # タスク総数
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
@@ -94,4 +89,3 @@ spec:
                     operator: In
                     values:
                       - PLACEHOLDER # ターゲットのノード名を入れる
-
